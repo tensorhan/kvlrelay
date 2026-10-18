@@ -102,3 +102,4 @@ Looking for contributors for larger runs, more pairs, corrections or negative re
 Code: [MIT](LICENSE). Downloaded models, data and grader retain their own licenses.
 
 Signoff: @tensorhan
+Credits: GPT-6-Astra
