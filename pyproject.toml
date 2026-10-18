@@ -1,0 +1,14 @@
+[project]
+name = "kvlrelay"
+version = "0.0.1"
+description = "Independent KV-Lingo implementation and paper-verification scripts"
+license = "MIT"
+requires-python = ">=3.11,<3.15"
+dependencies = [
+    "torch>=2.9,<3",
+    "transformers==5.18.0",
+    "huggingface-hub>=1,<2",
+]
+
+[project.optional-dependencies]
+ifeval = ["absl-py>=2,<3", "immutabledict>=4,<5", "langdetect==1.0.9", "nltk>=3.9,<4", "numpy>=1.26,<3"]
