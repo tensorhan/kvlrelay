@@ -124,3 +124,50 @@ class QwenAdapter:
             keys = keys * cos + rotate_half(keys) * sin
             cache.update(keys.contiguous(), values.transpose(1, 2).contiguous(), i)
         return cache
+
+    @torch.no_grad()
+    def scored_attention(self, tokens, start, block=256):
+        """Per layer, mean attention each key before `start` receives from queries at `start` onward.
+
+        Averaged over all query heads; returns FP64 [layers, start] on CPU. Scores are recomputed
+        from captured projections in query blocks, so no full T x T attention tensor is kept.
+        """
+        length, dim = tokens.shape[-1], self.config.head_dim
+        if tokens.ndim != 2 or tokens.shape[0] != 1 or not 0 < start < length <= self.config.max_position_embeddings:
+            raise ValueError("Scored attention needs a batch-one sequence with keys before and queries from start")
+        captured = [[None, None] for _ in self.model.model.layers]
+        handles = []
+
+        def hook(layer, side):
+            def record(module, inputs, output):
+                captured[layer][side] = output.detach().reshape(1, length, -1, dim)
+            return record
+
+        positions = torch.arange(length, device=tokens.device).unsqueeze(0)
+        try:
+            for i, layer in enumerate(self.model.model.layers):
+                handles.append(layer.self_attn.q_proj.register_forward_hook(hook(i, 0)))
+                handles.append(layer.self_attn.k_proj.register_forward_hook(hook(i, 1)))
+            self.model.model(input_ids=tokens, use_cache=False, attention_mask=torch.ones_like(tokens),
+                             position_ids=positions)
+        finally:
+            for handle in handles:
+                handle.remove()
+        cos, sin = self.model.model.rotary_emb(captured[0][1], positions)
+        cos, sin = cos.unsqueeze(1).float(), sin.unsqueeze(1).float()
+        keys_index = torch.arange(length, device=tokens.device)
+        weights = torch.zeros((len(captured), start), dtype=torch.float64)
+        for i, (raw_queries, raw_keys) in enumerate(captured):
+            attention = self.model.model.layers[i].self_attn
+            queries = attention.q_norm(raw_queries).transpose(1, 2).float()
+            keys = attention.k_norm(raw_keys).transpose(1, 2).float()
+            queries, keys = queries * cos + rotate_half(queries) * sin, keys * cos + rotate_half(keys) * sin
+            keys = keys[0].repeat_interleave(queries.shape[1] // keys.shape[1], dim=0)  # GQA, as repeat_kv
+            total = torch.zeros(start, device=tokens.device)
+            for first in range(start, length, block):
+                scores = queries[0, :, first:first + block] @ keys.transpose(-1, -2) * attention.scaling
+                rows = torch.arange(first, first + scores.shape[1], device=tokens.device)
+                scores.masked_fill_(keys_index > rows[:, None], float("-inf"))
+                total += scores.softmax(-1)[..., :start].sum((0, 1))
+            weights[i] = total.cpu().double() / (queries.shape[1] * (length - start))
+        return weights

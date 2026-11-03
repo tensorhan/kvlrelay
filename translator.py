@@ -35,12 +35,16 @@ class CacheTranslator(nn.Module):
 
 
 @torch.no_grad()
-def fit_closed_form(translator, examples, *, relative_tolerance=1e-8):
+def fit_closed_form(translator, examples, *, relative_tolerance=1e-8, weighting="uniform", continuation_tokens=None):
     """FP64 sufficient statistics; symmetric truncated pseudo-inverse, Appendix E.
 
     Statistics stay on CPU; no prefix activations are retained between examples.
     There is no bias or ridge penalty in the paper's deployed initialiser.
+    weighting="attention" weights each prefix position by the mean attention it receives
+    from the target's scored continuation queries.
     """
+    if weighting not in ("uniform", "attention"):
+        raise ValueError("Closed-form weighting must be 'uniform' or 'attention'")
     shape = translator.keys.shape
     grams = torch.zeros((2, shape[0], shape[1], shape[3], shape[3]), dtype=torch.float64)
     crosses = torch.zeros((2, shape[0], shape[1], shape[3], shape[2]), dtype=torch.float64)
@@ -49,12 +53,19 @@ def fit_closed_form(translator, examples, *, relative_tolerance=1e-8):
         tokens = torch.tensor([example["prompt_ids"][:-1]], device=translator.source.device)
         source = translator.source.capture(tokens)
         target = translator.target.capture(tokens.to(translator.target.device))
+        weights = None
+        if weighting == "attention":
+            # Same queries as the distillation loss: the last prompt token, then the fed continuation.
+            scored = example["prompt_ids"] + example["continuation_ids"][:continuation_tokens][:-1]
+            weights = translator.target.scored_attention(
+                torch.tensor([scored], device=translator.target.device), source.length)
         for layer, (src_pair, tgt_pair) in enumerate(zip(source.layers, target.layers)):
             for side, (x, y) in enumerate(zip(src_pair, tgt_pair)):
                 # MPS cannot hold FP64 tensors; transfer before promoting.
                 x, y = x[0].cpu().double(), y[0].cpu().double()
-                grams[side, layer] += torch.einsum("thi,thj->hij", x, x)
-                crosses[side, layer] += torch.einsum("thi,thj->hij", x, y)
+                weighted = x if weights is None else x * weights[layer].view(-1, 1, 1)
+                grams[side, layer] += torch.einsum("thi,thj->hij", weighted, x)
+                crosses[side, layer] += torch.einsum("thi,thj->hij", weighted, y)
         positions += source.length
         print(f"Closed-form statistics {index + 1}/{len(examples)} ({positions} prefix positions)", flush=True)
     if not positions:
@@ -71,7 +82,7 @@ def fit_closed_form(translator, examples, *, relative_tolerance=1e-8):
             parameter[layer].copy_(solution.transpose(-1, -2).to(parameter))
             ranks.extend(keep.sum(-1).tolist())
     return {"examples": len(examples), "prefix_positions": positions, "statistics_dtype": "float64",
-            "solver": "symmetric_eigendecomposition_truncated_pseudoinverse",
+            "solver": "symmetric_eigendecomposition_truncated_pseudoinverse", "weighting": weighting,
             "relative_eigenvalue_tolerance": relative_tolerance, "min_rank": min(ranks), "max_rank": max(ranks)}
 
 

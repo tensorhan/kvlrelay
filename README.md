@@ -25,6 +25,8 @@ and the [official IFEval grader](https://github.com/google-research/google-resea
 prepare its data with `.venv/bin/python ifeval.py ifeval --prepare` first.
 `DIRECTION=l2s` reverses the pair: Qwen3-1.7B builds the cache and Qwen3-0.6B
 continues, with a default learning rate of 1e-4. Both directions share prepared data.
+`TRAIN_ARGS="--fit-weighting attention"` weights each prefix position in the closed-form
+fit by the target's attention to it; `recipe` does not forward this option.
 Resume with `TRAIN_ARGS=--resume`, `IFEVAL_ARGS=--resume` or `RECIPE_ARGS=--resume`
 on the corresponding target, keeping the same run name and settings.
 Generated data, maps and reports live under `data/`, `artifacts/` and `results/`.

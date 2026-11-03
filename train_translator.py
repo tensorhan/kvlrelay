@@ -80,6 +80,8 @@ def main(argv=None):
     parser.add_argument("--continuation-tokens", type=int, default=64, help="Paper cap is 2048")
     parser.add_argument("--learning-rate", type=float, default=1e-3, help="Paper head-wise small-to-large selected rate")
     parser.add_argument("--eigenvalue-tolerance", type=float, default=1e-8)
+    parser.add_argument("--fit-weighting", choices=["uniform", "attention"], default="uniform",
+                        help="Closed-form fit: equal weight per prefix position, or weight by target attention")
     parser.add_argument("--init-from", type=Path, help="Reuse a compatible closed-form artifact across learning rates/seeds")
     parser.add_argument("--resume", action="store_true", help="Resume the sibling .checkpoint.pt with identical training settings")
     parser.add_argument("--checkpoint-every", type=int, default=100, help="Save every N completed updates, plus step zero and the last step")
@@ -146,6 +148,7 @@ def main(argv=None):
                 or initial["validation_prompt_sha256"] != [digest(e["prompt_ids"]) for e in validation]
                 or initial["closed_form"]["examples"] != args.fit_samples
                 or initial["closed_form"]["relative_eigenvalue_tolerance"] != args.eigenvalue_tolerance
+                or initial["closed_form"]["weighting"] != args.fit_weighting
                 or initial["settings"]["model_dtype"] != args.dtype
                 or initial["settings"]["attention"] != args.attention
                 or initial["settings"]["continuation_cap"] != args.continuation_tokens
@@ -153,7 +156,8 @@ def main(argv=None):
             raise ValueError("Closed-form initialization does not match this experiment")
         fitting, baseline_validation = initial["closed_form"], initial["closed_form_validation"]
     else:
-        fitting = fit_closed_form(translator, training[:args.fit_samples], relative_tolerance=args.eigenvalue_tolerance)
+        fitting = fit_closed_form(translator, training[:args.fit_samples], relative_tolerance=args.eigenvalue_tolerance,
+                                  weighting=args.fit_weighting, continuation_tokens=args.continuation_tokens)
         baseline_validation = evaluate(translator, validation, args.continuation_tokens)
     metadata = {
         "paper": PAPER, "paper_sections": ["3.1", "3.2", "Appendix E"], "full_paper_reproduction": False,
