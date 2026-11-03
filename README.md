@@ -2,7 +2,7 @@
 
 Experiment scripts for [KV-Lingo](https://arxiv.org/html/2609.32610v1): train a
 directional KV-cache translator and compare a model handoff with native target
-re-prefill. Implements head-wise linear maps for **Qwen3-0.6B → Qwen3-1.7B**.
+re-prefill. Implements head-wise linear maps for **Qwen3-0.6B ↔ Qwen3-1.7B**.
 An independent, partial reproduction; quality and speedup remain experimental.
 
 ## Run
@@ -23,6 +23,8 @@ and the [official IFEval grader](https://github.com/google-research/google-resea
 `make prepare`, `train`, `benchmark` and `ifeval` also run independently.
 `make ifeval-native DEVICE=cuda` scores all 541 prompts without a translator;
 prepare its data with `.venv/bin/python ifeval.py ifeval --prepare` first.
+`DIRECTION=l2s` reverses the pair: Qwen3-1.7B builds the cache and Qwen3-0.6B
+continues, with a default learning rate of 1e-4. Both directions share prepared data.
 Resume with `TRAIN_ARGS=--resume`, `IFEVAL_ARGS=--resume` or `RECIPE_ARGS=--resume`
 on the corresponding target, keeping the same run name and settings.
 Generated data, maps and reports live under `data/`, `artifacts/` and `results/`.

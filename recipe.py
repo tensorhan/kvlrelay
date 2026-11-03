@@ -111,8 +111,9 @@ def main(argv=None):
     parser.add_argument("--timing-examples", type=int, default=8)
     parser.add_argument("--resume", action="store_true")
     args = parser.parse_args(argv)
-    if args.seed != 42 or (args.source_model, args.target_model) != ("Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B"):
-        parser.error("This recipe covers pretrained Qwen3-0.6B -> 1.7B, selecting rates with seed 42")
+    pair = (args.source_model, args.target_model)
+    if args.seed != 42 or pair not in {("Qwen/Qwen3-0.6B", "Qwen/Qwen3-1.7B"), ("Qwen/Qwen3-1.7B", "Qwen/Qwen3-0.6B")}:
+        parser.error("This recipe covers pretrained Qwen3-0.6B <-> 1.7B, selecting rates with seed 42")
     if any(not re.fullmatch(r"[0-9a-f]{40}", revision) for revision in (args.source_revision, args.target_revision)):
         parser.error("Use immutable source/target revisions (the Makefile supplies them)")
     if (min(args.fit_samples, args.distill_steps, args.batch_size, args.continuation_tokens,

@@ -9,10 +9,29 @@ DEVICE ?= auto
 DTYPE ?= bfloat16
 SEED ?= 42
 DATA_SEED ?= 42
-LR ?= 1e-3
 DATASET_REVISION := 1a9454ed054b8544503ab8d8c0a519d141a44c5b
-SOURCE_REVISION := c1899de289a04d12100db370d81485cdf75e47ca
-TARGET_REVISION := 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+SMALL_MODEL := Qwen/Qwen3-0.6B
+SMALL_REVISION := c1899de289a04d12100db370d81485cdf75e47ca
+LARGE_MODEL := Qwen/Qwen3-1.7B
+LARGE_REVISION := 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
+# s2l: 0.6B source, 1.7B target. l2s: 1.7B source, 0.6B target.
+# Each direction has its own default head-wise learning rate.
+DIRECTION ?= s2l
+ifeq ($(DIRECTION),s2l)
+SOURCE_MODEL := $(SMALL_MODEL)
+SOURCE_REVISION := $(SMALL_REVISION)
+TARGET_MODEL := $(LARGE_MODEL)
+TARGET_REVISION := $(LARGE_REVISION)
+LR ?= 1e-3
+else ifeq ($(DIRECTION),l2s)
+SOURCE_MODEL := $(LARGE_MODEL)
+SOURCE_REVISION := $(LARGE_REVISION)
+TARGET_MODEL := $(SMALL_MODEL)
+TARGET_REVISION := $(SMALL_REVISION)
+LR ?= 1e-4
+else
+$(error Unknown DIRECTION '$(DIRECTION)'; choose s2l or l2s)
+endif
 
 ifeq ($(PROFILE),pilot)
 TRAIN_SAMPLES ?= 256
@@ -43,10 +62,11 @@ $(error Unknown PROFILE '$(PROFILE)'; choose pilot or paper-budget)
 endif
 
 DATA_DIR ?= data/$(PROFILE)-data$(DATA_SEED)
-RUN ?= $(PROFILE)-data$(DATA_SEED)-seed$(SEED)-lr$(LR)-$(DEVICE)-$(DTYPE)
+RUN ?= $(PROFILE)-data$(DATA_SEED)$(if $(filter l2s,$(DIRECTION)),-l2s)-seed$(SEED)-lr$(LR)-$(DEVICE)-$(DTYPE)
 ARTIFACT ?= artifacts/$(RUN)/translator.pt
 RESULTS ?= results/$(RUN)
-PAIR = --source-revision $(SOURCE_REVISION) --target-revision $(TARGET_REVISION) \
+PAIR = --source-model $(SOURCE_MODEL) --target-model $(TARGET_MODEL) \
+	--source-revision $(SOURCE_REVISION) --target-revision $(TARGET_REVISION) \
 	--device $(DEVICE) --dtype $(DTYPE) --seed $(SEED)
 # Optional CLI arguments, e.g. IFEVAL_ARGS=--resume or a timing context ladder.
 BENCHMARK_ARGS ?=
@@ -56,13 +76,14 @@ RECIPE_ARGS ?=
 
 help:
 	@echo "Targets: prepare, train, benchmark, ifeval, ifeval-native, run, recipe"
-	@echo "Defaults: PROFILE=pilot DEVICE=auto DTYPE=bfloat16; inspect with make -n run"
+	@echo "Defaults: PROFILE=pilot DIRECTION=s2l DEVICE=auto DTYPE=bfloat16; inspect with make -n run"
+	@echo "DIRECTION=l2s: Qwen3-1.7B -> 0.6B; both directions share prepared data"
 	@echo "Larger recipe: make -n run PROFILE=paper-budget DEVICE=cuda"
 	@echo "Use RUN=name for a fresh experiment; generated reports stay in results/"
 
 prepare:
 	$(PYTHON) paper_data.py nemotron --dataset-revision $(DATASET_REVISION) \
-		--tokenizer-revision $(TARGET_REVISION) --mixture mixed --reasoning both \
+		--tokenizer $(LARGE_MODEL) --tokenizer-revision $(LARGE_REVISION) --mixture mixed --reasoning both \
 		--train-samples $(TRAIN_SAMPLES) --validation-samples 64 --test-samples 64 \
 		--natural-max-tokens $(NATURAL_MAX) --packed-min-tokens $(PACKED_MIN) \
 		--max-prefix-tokens $(PREFIX) --continuation-tokens $(CONTINUATION) \
