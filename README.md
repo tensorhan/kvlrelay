@@ -23,11 +23,15 @@ and the [official IFEval grader](https://github.com/google-research/google-resea
 `make prepare`, `train`, `benchmark` and `ifeval` also run independently.
 `make ifeval-native DEVICE=cuda` scores all 541 prompts without a translator;
 prepare its data with `.venv/bin/python ifeval.py ifeval --prepare` first.
-`DIRECTION=l2s` reverses the pair: Qwen3-1.7B builds the cache and Qwen3-0.6B
-continues, with a default learning rate of 1e-4. Both directions share prepared data.
+By default Qwen3-1.7B builds the cache and Qwen3-0.6B continues, with a learning rate
+of 1e-4. `DIRECTION=s2l` reverses the pair, with 1e-3. Both directions share prepared data.
 `TRAIN_ARGS="--fit-weighting attention"` weights each prefix position in the closed-form
 fit by the target's attention to it; `recipe` does not forward this option.
-Resume with `TRAIN_ARGS=--resume`, `IFEVAL_ARGS=--resume` or `RECIPE_ARGS=--resume`
+`make task TASK=arc` and `make task TASK=gsm8k HANDOFF=trace` score generate-and-parse
+accuracy from a translator; `make task-native` scores native paths only. With
+`HANDOFF=trace`, the source reasons and the target writes only the answer, compared
+against the target reading the same trace as text.
+Resume with `TRAIN_ARGS=--resume`, `IFEVAL_ARGS=--resume`, `TASK_ARGS=--resume` or `RECIPE_ARGS=--resume`
 on the corresponding target, keeping the same run name and settings.
 Generated data, maps and reports live under `data/`, `artifacts/` and `results/`.
 
@@ -39,6 +43,7 @@ Generated data, maps and reports live under `data/`, `artifacts/` and `results/`
 | Train | `train_translator.py` | FP64 closed-form fit, then FP32 KL distillation; frozen models |
 | Measure | `benchmark.py` | Held-out target KL, reply perplexity, native controls, four timing paths |
 | Generate | `ifeval.py` | Official strict instruction accuracy; resumable answer-level report |
+| Generate | `task_eval.py` | ARC-Challenge and GSM8K accuracy, prompt or trace hand-off; resumable item-level report |
 | Orchestrate | `recipe.py` | Validation-only LR selection, seeds 42/43/44, IFEval item-level mean/SE |
 
 Both profiles use BF16 models by default (`DTYPE=float32` selects FP32).
@@ -73,7 +78,7 @@ CV ≤10% is our timing diagnostic screen.
 
 ## Recorded M3 pilot
 
-**Apple M3, 16 GiB**: seed 42; 32 natural fitting conversations,
+**Apple M3, 16 GiB**: Qwen3-0.6B→1.7B, seed 42; 32 natural fitting conversations,
 100 updates, eight held-out continuations (512/64-token caps); 32 IFEval prompts,
 1,024 generated-token cap. This smaller run uses neither preset's full budget.
 

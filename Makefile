@@ -1,7 +1,7 @@
 # Thin recipes over the Python CLIs. No training or downloads on bare `make`.
 .DEFAULT_GOAL := help
 .NOTPARALLEL:
-.PHONY: help prepare train benchmark ifeval ifeval-native run recipe
+.PHONY: help prepare train benchmark ifeval ifeval-native task task-native run recipe
 
 PYTHON ?= .venv/bin/python
 PROFILE ?= pilot
@@ -16,7 +16,7 @@ LARGE_MODEL := Qwen/Qwen3-1.7B
 LARGE_REVISION := 70d244cc86ccca08cf5af4e1e306ecf908b1ad5e
 # s2l: 0.6B source, 1.7B target. l2s: 1.7B source, 0.6B target.
 # Each direction has its own default head-wise learning rate.
-DIRECTION ?= s2l
+DIRECTION ?= l2s
 ifeq ($(DIRECTION),s2l)
 SOURCE_MODEL := $(SMALL_MODEL)
 SOURCE_REVISION := $(SMALL_REVISION)
@@ -68,16 +68,20 @@ RESULTS ?= results/$(RUN)
 PAIR = --source-model $(SOURCE_MODEL) --target-model $(TARGET_MODEL) \
 	--source-revision $(SOURCE_REVISION) --target-revision $(TARGET_REVISION) \
 	--device $(DEVICE) --dtype $(DTYPE) --seed $(SEED)
+# TASK: arc or gsm8k. HANDOFF: prompt, or trace for source reasoning and a target answer.
+TASK ?= arc
+HANDOFF ?= prompt
 # Optional CLI arguments, e.g. IFEVAL_ARGS=--resume or a timing context ladder.
 BENCHMARK_ARGS ?=
 IFEVAL_ARGS ?=
+TASK_ARGS ?=
 TRAIN_ARGS ?=
 RECIPE_ARGS ?=
 
 help:
-	@echo "Targets: prepare, train, benchmark, ifeval, ifeval-native, run, recipe"
-	@echo "Defaults: PROFILE=pilot DIRECTION=s2l DEVICE=auto DTYPE=bfloat16; inspect with make -n run"
-	@echo "DIRECTION=l2s: Qwen3-1.7B -> 0.6B; both directions share prepared data"
+	@echo "Targets: prepare, train, benchmark, ifeval, ifeval-native, task, task-native, run, recipe"
+	@echo "Defaults: PROFILE=pilot DIRECTION=l2s DEVICE=auto DTYPE=bfloat16; inspect with make -n run"
+	@echo "DIRECTION=s2l: Qwen3-0.6B -> 1.7B; both directions share prepared data"
 	@echo "Larger recipe: make -n run PROFILE=paper-budget DEVICE=cuda"
 	@echo "Use RUN=name for a fresh experiment; generated reports stay in results/"
 
@@ -89,6 +93,8 @@ prepare:
 		--max-prefix-tokens $(PREFIX) --continuation-tokens $(CONTINUATION) \
 		--max-scan $(MAX_SCAN) --seed $(DATA_SEED) --output $(DATA_DIR)
 	$(PYTHON) ifeval.py ifeval --prepare
+	$(PYTHON) task_eval.py arc --prepare
+	$(PYTHON) task_eval.py gsm8k --prepare
 
 train:
 	$(PYTHON) train_translator.py --data-dir $(DATA_DIR) $(PAIR) \
@@ -108,6 +114,14 @@ ifeval:
 ifeval-native:
 	$(PYTHON) ifeval.py ifeval --native-only $(PAIR) \
 		--output $(RESULTS)/ifeval-native.json $(IFEVAL_ARGS)
+
+task:
+	$(PYTHON) task_eval.py $(TASK) --translator $(ARTIFACT) --handoff $(HANDOFF) $(PAIR) \
+		--output $(RESULTS)/$(TASK)-$(HANDOFF).json $(TASK_ARGS)
+
+task-native:
+	$(PYTHON) task_eval.py $(TASK) --native-only --handoff $(HANDOFF) $(PAIR) \
+		--output $(RESULTS)/$(TASK)-$(HANDOFF)-native.json $(TASK_ARGS)
 
 # Consumes prepared data. Five-rate selection (extended at edges), then seeds 42/43/44.
 recipe:
