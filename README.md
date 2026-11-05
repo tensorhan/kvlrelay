@@ -27,6 +27,8 @@ By default Qwen3-1.7B builds the cache and Qwen3-0.6B continues, with a learning
 of 1e-4. `DIRECTION=s2l` reverses the pair, with 1e-3. Both directions share prepared data.
 `TRAIN_ARGS="--fit-weighting attention"` weights each prefix position in the closed-form
 fit by the target's attention to it; `recipe` does not forward this option.
+`make switch` times re-reading against switching on chats joined from held-out data and
+cropped to each length; set them with `SWITCH_ARGS="--lengths 4000 8000"`.
 `make task TASK=arc` and `make task TASK=gsm8k HANDOFF=trace` score generate-and-parse
 accuracy from a translator; `make task-native` scores native paths only. With
 `HANDOFF=trace`, the source reasons and the target writes only the answer, compared
@@ -42,6 +44,7 @@ Generated data, maps and reports live under `data/`, `artifacts/` and `results/`
 | Prepare | `paper_data.py` | Disjoint natural/packed Nemotron splits; reasoning on/off; hashes |
 | Train | `train_translator.py` | FP64 closed-form fit, then FP32 KL distillation; frozen models |
 | Measure | `benchmark.py` | Held-out target KL, reply perplexity, native controls, four timing paths |
+| Measure | `switch_cost.py` | Re-read and switch wait on joined chats, up to 8k tokens by default; each path timed apart |
 | Generate | `ifeval.py` | Official strict instruction accuracy; resumable answer-level report |
 | Generate | `task_eval.py` | ARC-Challenge and GSM8K accuracy, prompt or trace hand-off; resumable item-level report |
 | Orchestrate | `recipe.py` | Validation-only LR selection, seeds 42/43/44, IFEval item-level mean/SE |

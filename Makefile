@@ -1,7 +1,7 @@
 # Thin recipes over the Python CLIs. No training or downloads on bare `make`.
 .DEFAULT_GOAL := help
 .NOTPARALLEL:
-.PHONY: help prepare train benchmark ifeval ifeval-native task task-native run recipe
+.PHONY: help prepare train benchmark switch ifeval ifeval-native task task-native run recipe
 
 PYTHON ?= .venv/bin/python
 PROFILE ?= pilot
@@ -73,13 +73,14 @@ TASK ?= arc
 HANDOFF ?= prompt
 # Optional CLI arguments, e.g. IFEVAL_ARGS=--resume or a timing context ladder.
 BENCHMARK_ARGS ?=
+SWITCH_ARGS ?=
 IFEVAL_ARGS ?=
 TASK_ARGS ?=
 TRAIN_ARGS ?=
 RECIPE_ARGS ?=
 
 help:
-	@echo "Targets: prepare, train, benchmark, ifeval, ifeval-native, task, task-native, run, recipe"
+	@echo "Targets: prepare, train, benchmark, switch, ifeval, ifeval-native, task, task-native, run, recipe"
 	@echo "Defaults: PROFILE=pilot DIRECTION=l2s DEVICE=auto DTYPE=bfloat16; inspect with make -n run"
 	@echo "DIRECTION=s2l: Qwen3-0.6B -> 1.7B; both directions share prepared data"
 	@echo "Larger recipe: make -n run PROFILE=paper-budget DEVICE=cuda"
@@ -105,6 +106,10 @@ benchmark:
 	$(PYTHON) benchmark.py nemotron --data-dir $(DATA_DIR) --translator $(ARTIFACT) $(PAIR) \
 		--continuation-tokens $(CONTINUATION) --repeats 20 --warmup 3 --timing-examples 8 \
 		--output $(RESULTS)/nemotron.json $(BENCHMARK_ARGS)
+
+switch:
+	$(PYTHON) switch_cost.py --data-dir $(DATA_DIR) --translator $(ARTIFACT) $(PAIR) \
+		--output $(RESULTS)/switch.json $(SWITCH_ARGS)
 
 ifeval:
 	$(PYTHON) ifeval.py ifeval --translator $(ARTIFACT) $(PAIR) --limit $(IFEVAL_LIMIT) \
